@@ -1,0 +1,50 @@
+name: Chequeo diario de Supabase
+
+on:
+  # Todos los días a las 08:00 UTC (~03:00 en Ecuador). Una vez al día deja
+  # margen de sobra frente al límite de 7 días sin actividad con el que
+  # Supabase pausa los proyectos gratuitos.
+  schedule:
+    - cron: '0 8 * * *'
+  # Botón "Run workflow" en la pestaña Actions para probarlo cuando quieras.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  consultar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consultar la tabla "facturas" en Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_KEY:-}" ]; then
+            echo "::error::Faltan los Secrets VITE_SUPABASE_URL o VITE_SUPABASE_KEY en el repositorio."
+            exit 1
+          fi
+
+          echo "Consultando ${SUPABASE_URL}/rest/v1/facturas (1 fila, solo lectura)..."
+
+          http_code=$(curl -sS -o respuesta.txt -w '%{http_code}' \
+            --max-time 30 --retry 2 --retry-delay 5 \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" \
+            "${SUPABASE_URL}/rest/v1/facturas?select=id&limit=1") || {
+              echo "::error::No se pudo conectar con Supabase (curl falló)."
+              exit 1
+            }
+
+          echo "HTTP ${http_code}"
+          echo "Respuesta: $(cat respuesta.txt)"
+
+          if [ "${http_code}" -ge 200 ] && [ "${http_code}" -lt 300 ]; then
+            echo "✅ Supabase respondió correctamente."
+          else
+            echo "::error::La consulta a Supabase falló (HTTP ${http_code}): $(cat respuesta.txt)"
+            exit 1
+          fi
