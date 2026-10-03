@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import plantillaUrl from './assets/zhao-plantilla-factura.pdf?url'
 import logoUrl from './assets/zhao-logo-corregido.jpeg?url'
 import { archivoAJpegDataUrl } from './imagenes'
-import { rellenarFactura, descargarPdf } from './generarFactura'
+import { rellenarFactura, compartirODescargarPdf } from './generarFactura'
 import { supabase } from './supabaseClient'
 
 // Fecha local en formato YYYY-MM-DD (toISOString usaría UTC y podría dar otro día)
@@ -11,6 +11,30 @@ function hoy() {
   const mes = String(d.getMonth() + 1).padStart(2, '0')
   const dia = String(d.getDate()).padStart(2, '0')
   return `${d.getFullYear()}-${mes}-${dia}`
+}
+
+// La plantilla (3.2 MB) y el logo se descargan una sola vez, apenas se abre
+// la pantalla. Así, al tocar "Generar factura" no hay que esperar la red, y
+// el panel de compartir se abre a tiempo: Safari en iPhone solo lo permite
+// poco después del toque; si se demora, lo rechaza (NotAllowedError).
+let recursos = null
+function cargarRecursos() {
+  if (!recursos) {
+    recursos = Promise.all([
+      fetch(plantillaUrl).then((r) => r.arrayBuffer()),
+      fetch(logoUrl).then((r) => r.arrayBuffer()),
+    ]).catch((err) => {
+      recursos = null // reintentar en el próximo toque
+      throw err
+    })
+  }
+  return recursos
+}
+
+const MENSAJE_GUARDADO = {
+  compartido: 'Factura guardada',
+  descargado: 'Factura guardada',
+  cancelado: 'Factura guardada. Cerraste el panel de compartir sin enviar el PDF.',
 }
 
 function NuevaFactura() {
@@ -24,6 +48,10 @@ function NuevaFactura() {
   const [foto, setFoto] = useState(null)
   const [fotoCargando, setFotoCargando] = useState(false)
   const [fotoError, setFotoError] = useState('')
+
+  useEffect(() => {
+    cargarRecursos().catch((err) => console.error(err)) // si falla, se reintenta al generar
+  }, [])
 
   // Decodifica la foto elegida (cualquier formato), la reduce a máximo 1000px
   // y la deja como JPEG en base64. Nunca falla en silencio: si algo sale mal,
@@ -54,37 +82,48 @@ function NuevaFactura() {
     setError('')
     setGuardado('')
     try {
-      // 1) Primero el PDF: se descarga pase lo que pase después con Supabase
+      // 1) Primero el PDF: si no se puede generar, no se guarda nada
+      let bytes
       try {
-        const [plantilla, logo] = await Promise.all([
-          fetch(plantillaUrl).then((r) => r.arrayBuffer()),
-          fetch(logoUrl).then((r) => r.arrayBuffer()),
-        ])
-        const bytes = await rellenarFactura(plantilla, logo, { name, address, date, amount, foto })
-        descargarPdf(bytes, `factura-${date}.pdf`)
+        const [plantilla, logo] = await cargarRecursos()
+        bytes = await rellenarFactura(plantilla, logo, { name, address, date, amount, foto })
       } catch (err) {
         console.error(err)
         setError('No se pudo generar la factura: ' + err.message)
         return
       }
 
-      // 2) Después, el registro en la tabla "facturas"
-      const { error: errorSupabase } = await supabase.from('facturas').insert({
-        name,
-        address,
-        fecha: date || null,
-        total: amount === '' ? null : Number(amount),
-        foto: foto || null,
-      })
+      // 2) El guardado en Supabase arranca ya, sin esperar al panel de
+      //    compartir (el usuario puede tardar eligiendo en WhatsApp, etc.)
+      const guardando = Promise.resolve(
+        supabase.from('facturas').insert({
+          name,
+          address,
+          fecha: date || null,
+          total: amount === '' ? null : Number(amount),
+          foto: foto || null,
+        }),
+      ).catch((err) => ({ error: err }))
+
+      // 3) Compartir (celular) o descargar (respaldo / computadora)
+      let entrega = 'descargado'
+      try {
+        entrega = await compartirODescargarPdf(bytes, `factura-${date}.pdf`)
+      } catch (err) {
+        console.error(err)
+        setError('No se pudo compartir ni descargar el PDF: ' + err.message)
+      }
+
+      const { error: errorSupabase } = await guardando
       if (errorSupabase) {
         console.error(errorSupabase)
-        setError('El PDF se descargó, pero no se pudo guardar en Supabase: ' + errorSupabase.message)
+        setError('El PDF se generó, pero no se pudo guardar en Supabase: ' + errorSupabase.message)
       } else {
-        setGuardado('Factura guardada')
+        setGuardado(MENSAJE_GUARDADO[entrega])
       }
     } catch (err) {
       console.error(err)
-      setError('El PDF se descargó, pero no se pudo guardar en Supabase: ' + err.message)
+      setError('Algo falló al generar la factura: ' + err.message)
     } finally {
       setGenerando(false)
     }

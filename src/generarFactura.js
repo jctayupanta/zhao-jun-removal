@@ -107,6 +107,42 @@ export async function rellenarFactura(plantillaBytes, logoBytes, { name, address
   return pdf.save()
 }
 
+// ¿Se puede abrir el panel nativo de compartir con este archivo?
+// Solo en pantallas táctiles (celular/tablet): en una PC con Windows, Chrome y
+// Edge también soportan compartir archivos, pero ese panel no tiene "Guardar",
+// así que ahí se sigue descargando como siempre.
+function puedeCompartir(archivo) {
+  try {
+    return (
+      typeof navigator.canShare === 'function' &&
+      typeof navigator.share === 'function' &&
+      window.matchMedia('(pointer: coarse)').matches &&
+      navigator.canShare({ files: [archivo] })
+    )
+  } catch {
+    return false
+  }
+}
+
+// Abre el panel de compartir del celular (WhatsApp, Mail, Guardar en
+// archivos...) o, si no se puede, descarga el PDF como antes.
+// Devuelve 'compartido', 'cancelado' (el usuario cerró el panel) o 'descargado'.
+export async function compartirODescargarPdf(bytes, nombreArchivo) {
+  const archivo = new File([bytes], nombreArchivo, { type: 'application/pdf' })
+  if (puedeCompartir(archivo)) {
+    try {
+      await navigator.share({ files: [archivo], title: nombreArchivo })
+      return 'compartido'
+    } catch (err) {
+      if (err && err.name === 'AbortError') return 'cancelado'
+      // Cualquier otro fallo (p. ej. NotAllowedError): respaldo con descarga
+      console.warn('No se pudo abrir el panel de compartir; se descarga el PDF.', err)
+    }
+  }
+  descargarPdf(bytes, nombreArchivo)
+  return 'descargado'
+}
+
 export function descargarPdf(bytes, nombreArchivo) {
   const blob = new Blob([bytes], { type: 'application/pdf' })
   const url = URL.createObjectURL(blob)
