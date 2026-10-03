@@ -1,0 +1,65 @@
+name: Deploy a GitHub Pages
+
+on:
+  # Se despliega en cada push a la rama principal.
+  push:
+    branches: [main]
+  # Permite lanzarlo a mano desde la pestaña "Actions" de GitHub.
+  workflow_dispatch:
+
+# Permisos que necesita el despliegue a Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Si se empujan varios commits seguidos, cancela el despliegue anterior.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          # Vite 8 necesita Node 20.19+ o 22.12+; se usa 22 (LTS).
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Configurar Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Build
+        run: npm run build
+        env:
+          # Ruta base del sitio en Pages (ej. /zhao-jun-removal).
+          VITE_BASE: ${{ steps.pages.outputs.base_path }}
+          # Credenciales de Supabase (se toman de los Secrets del repo).
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
+
+      - name: Subir el sitio compilado
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publicar en GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
