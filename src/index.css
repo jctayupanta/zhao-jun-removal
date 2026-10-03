@@ -176,3 +176,103 @@ button.secundario {
   font-family: monospace;
   font-size: 0.8rem;
 }
+
+.foto-trabajo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.foto-seccion-titulo {
+  font-weight: 600;
+}
+
+.foto-botones {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.foto-opcion {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+.foto-opcion-titulo {
+  font-size: 0.9rem;
+  color: #444;
+}
+
+/* Input de archivo real y visible, con el botón nativo estilizado. */
+.foto-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 4px;
+  border: 1px solid #888;
+  border-radius: 6px;
+  background: #fff;
+  color: #555;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.foto-input::file-selector-button {
+  margin-right: 8px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: #2e3192;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.foto-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.foto-preview img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.foto-cargando {
+  margin: 0;
+  color: #555;
+  font-style: italic;
+}
+
+.foto-error {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: #fde5e5;
+  color: #a12020;
+  font-weight: 600;
+}
+
+.foto-error-detalle {
+  display: inline-block;
+  margin-top: 2px;
+  font-weight: 400;
+  font-size: 0.85em;
+}
+
+.detalle-foto {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  margin-top: 4px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}

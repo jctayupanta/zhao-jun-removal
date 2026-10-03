@@ -18,6 +18,28 @@ const CAMPOS = {
   total: { x: 183, yInferior: 510.89, tamano: 12, negrita: true },
 }
 
+// Zonas rectangulares, también con origen ARRIBA-izquierda.
+// Logo viejo de la plantilla (dice "JUN REMOVAL"): se tapa con blanco y se
+// dibuja encima el logo corregido.
+const ZONA_LOGO = { x: 278, y: 0, ancho: 312, alto: 130 }
+// El rectángulo blanco llega hasta el borde derecho de la página (612): si se
+// corta en x=590, queda un pedacito suelto de la franja rosa a la derecha.
+const TAPA_LOGO = { x: 278, y: 0, ancho: 612 - 278, alto: 130 }
+// Espacio libre bajo "TOTAL AMOUNT DUE", a la derecha de la bolsa que sostiene
+// el lobo y por encima de la onda roja del pie de página.
+const ZONA_FOTO = { x: 462, y: 512, ancho: 132, alto: 166 }
+
+// Calcula dónde dibujar una imagen para que quepa en la zona sin deformarse,
+// centrada, y lo devuelve ya en coordenadas de pdf-lib (y desde abajo).
+function encajarEnZona(bordeSuperior, zona, anchoImagen, altoImagen) {
+  const escala = Math.min(zona.ancho / anchoImagen, zona.alto / altoImagen)
+  const ancho = anchoImagen * escala
+  const alto = altoImagen * escala
+  const x = zona.x + (zona.ancho - ancho) / 2
+  const yArriba = zona.y + (zona.alto - alto) / 2
+  return { x, y: bordeSuperior - yArriba - alto, width: ancho, height: alto }
+}
+
 function lineaBase(bordeSuperior, { yInferior, tamano }) {
   const desdeArriba = yInferior - tamano * DESCENDENTE
   return bordeSuperior - desdeArriba
@@ -36,15 +58,32 @@ function formatearMonto(valor) {
   return numero.toFixed(2)
 }
 
-// Recibe los bytes de la plantilla y los datos del formulario;
-// devuelve los bytes del PDF final.
-export async function rellenarFactura(plantillaBytes, { name, address, date, amount }) {
+// Recibe los bytes de la plantilla, los del logo corregido (JPEG) y los datos
+// del formulario (foto = data URL JPEG o null); devuelve los bytes del PDF final.
+export async function rellenarFactura(plantillaBytes, logoBytes, { name, address, date, amount, foto }) {
   const pdf = await PDFDocument.load(plantillaBytes)
   const pagina = pdf.getPage(0)
   const caja = pagina.getMediaBox()
   const bordeSuperior = caja.y + caja.height
   const normal = await pdf.embedFont(StandardFonts.Helvetica)
   const negrita = await pdf.embedFont(StandardFonts.HelveticaBold)
+
+  // Logo: rectángulo blanco sobre el viejo y el corregido encima
+  pagina.drawRectangle({
+    x: TAPA_LOGO.x,
+    y: bordeSuperior - TAPA_LOGO.y - TAPA_LOGO.alto,
+    width: TAPA_LOGO.ancho,
+    height: TAPA_LOGO.alto,
+    color: rgb(1, 1, 1),
+  })
+  const logo = await pdf.embedJpg(logoBytes)
+  pagina.drawImage(logo, encajarEnZona(bordeSuperior, ZONA_LOGO, logo.width, logo.height))
+
+  // Foto del trabajo (opcional)
+  if (foto) {
+    const imagen = await pdf.embedJpg(foto)
+    pagina.drawImage(imagen, encajarEnZona(bordeSuperior, ZONA_FOTO, imagen.width, imagen.height))
+  }
 
   const valores = {
     name,
